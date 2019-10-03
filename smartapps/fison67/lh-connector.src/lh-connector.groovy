@@ -181,7 +181,7 @@ def renderConfig() {
             [
                 platform: "SmartThings Lock History Connector",
                 name: "LH Connector",
-                app_url: localApiServerUrl(""),
+                app_url: apiServerUrl("/api/smartapps/installations/"),
                 app_id: app.id,
                 access_token:  state.accessToken
             ]
