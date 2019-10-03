@@ -1,5 +1,5 @@
 /**
- *  Lock History Connector (v.0.0.1)
+ *  Lock Connector (v.0.0.1)
  *
  * MIT License
  *
@@ -59,7 +59,7 @@ def mainPage() {
         
        	section() {
             paragraph "View this SmartApp's configuration to use it in other places."
-            href url:"${apiServerUrl("/api/smartapps/installations/${app.id}/config?access_token=${state.accessToken}")}", style:"embedded", required:false, title:"Config", description:"Tap, select, copy, then click \"Done\""
+            href url:"${localApiServerUrl("${app.id}/config?access_token=${state.accessToken}")}", style:"embedded", required:false, title:"Config", description:"Tap, select, copy, then click \"Done\""
        	}
     }
 }
@@ -99,18 +99,17 @@ def initialize() {
             "Content-Type": "application/json"
         ],
         "body":[
-            "app_url":"${apiServerUrl}/api/smartapps/installations/",
+            "app_url":localApiServerUrl(""),
             "app_id":app.id,
             "access_token":state.accessToken
         ]
     ]
     
-    def myhubAction = new physicalgraph.device.HubAction(options, null, [callback: null])
+    def myhubAction = new hubitat.device.HubAction(options, null, [callback: null])
     sendHubCommand(myhubAction)
 }
 
 def syncDevice(){
-	log.debug "Sync Device"
     def json = request.JSON
     
     unsubscribe()
@@ -118,7 +117,7 @@ def syncDevice(){
     (settings.lock).each { device ->
        json.data.each { item -> 
            if(device.deviceNetworkId == item.dni){
-               device.setCustomCodeData(item.list.toString().bytes.encodeBase64().toString())   
+               device.setCustomCodeData(item.list)   
                subscribe(device, 'lock', stateChangeHandler)
            }
        }
@@ -157,7 +156,7 @@ def stateChangeHandler(evt) {
             ]
         ]
         
-        def myhubAction = new physicalgraph.device.HubAction(options, null, [callback: notifyCallback])
+        def myhubAction = new hubitat.device.HubAction(options, null, [callback: notifyCallback])
     	sendHubCommand(myhubAction)
     }
 }
@@ -179,7 +178,7 @@ def renderConfig() {
         description: "LH Connector API",
         platforms: [
             [
-                platform: "SmartThings Lock History Connector",
+                platform: "SmartThings LH Connector",
                 name: "LH Connector",
                 app_url: localApiServerUrl(""),
                 app_id: app.id,
@@ -194,15 +193,8 @@ def renderConfig() {
 
 
 mappings {
-    if (!params.access_token || (params.access_token && params.access_token != state.accessToken)) {
-        path("/config")                           { action: [GET: "authError"]  }
-        path("/getDevice")                        { action: [GET: "authError"]  }
-        path("/sync")                             { action: [POST: "authError"]  }
-        path("/getStatus")                        { action: [GET: "authError"]  }
-    } else {
-        path("/config")                           { action: [GET: "renderConfig"]  }
-        path("/getDevice")                        { action: [GET: "deviceList"]  }
-        path("/sync")                             { action: [POST: "syncDevice"]  }
-        path("/getStatus")                        { action: [GET: "getStatus"]  }
-    }
+    path("/config")                           { action: [GET: "renderConfig"]  }
+    path("/getDevice")                        { action: [GET: "deviceList"]  }
+    path("/sync")                             { action: [POST: "syncDevice"]  }
+    path("/getStatus")                        { action: [GET: "getStatus"]  }
 }
