@@ -118,7 +118,7 @@ def syncDevice(){
     (settings.lock).each { device ->
        json.data.each { item -> 
            if(device.deviceNetworkId == item.dni){
-               device.setCustomCodeData(item.list)   
+               device.setCustomCodeData(item.list.toString().bytes.encodeBase64().toString())   
                subscribe(device, 'lock', stateChangeHandler)
            }
        }
