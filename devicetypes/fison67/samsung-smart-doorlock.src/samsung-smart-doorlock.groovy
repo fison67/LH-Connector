@@ -15,6 +15,8 @@
  */
  
  
+import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
 import groovy.transform.Field
 import physicalgraph.zigbee.zcl.DataType
 
@@ -180,7 +182,8 @@ def getUnlockType(type){
     }
 }
 
-def setCustomCodeData(list){
+def setCustomCodeData(_data){
+	def list = new JsonSlurper().parseText(new String(_data.decodeBase64()))
     list.each{ data ->
        state[data.code.toString()] = data.name
     }
