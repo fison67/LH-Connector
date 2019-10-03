@@ -1,5 +1,5 @@
 /**
- *  Samsung Smart Doorlock
+ *  Samsung Smart Doorlock v.0.0.1
  *
  *  Copyright 2018 Samsung SDS
  *
@@ -146,11 +146,11 @@ def uninstalled() {
 }
 
 def getTextString(name){
-    def lang = selectedLang
+    def lang = settings.selectedLang
     if(!lang){
         lang = "Korean"
     }
-    return LANGUAGE_MAP[name][selectedLang]   
+    return LANGUAGE_MAP[name][lang]   
 }
 
 def getUnlockType(type){
@@ -182,7 +182,7 @@ def getUnlockType(type){
 
 def setCustomCodeData(list){
     list.each{ data ->
-       state[data.code] = data.name
+       state[data.code.toString()] = data.name
     }
 }
 
@@ -280,7 +280,7 @@ private def parseAttributeResponse(String description) {
 	def clusterInt = descMap.clusterInt
 	def attrInt = descMap.attrInt 
 	def deviceName = device.displayName
-    log.debug "${clusterInt}:${CLUSTER_POWER}, ${attrInt}:${POWER_ATTR_BATTERY_VOLTAGE}"
+    
 	if (clusterInt == CLUSTER_POWER && attrInt == POWER_ATTR_BATTERY_VOLTAGE) {
 		responseMap.name = "battery"
 		responseMap.value = getBatteryResult(Integer.parseInt(descMap.value, 10))
@@ -368,7 +368,7 @@ private def parseCommandResponse(String description) {
                 responseMap.name = "lock"
                 responseMap.displayed = true
                 responseMap.isStateChange = true
-                sendEvent(name: "lastOpenType", value: "App", displayed: false)
+                sendEvent(name: "lastOpenType", value: "App", displayed: true)
                 sendEvent(name: "lockCode", value: 0, displayed: false)
                 sendEvent(name: "lockTypeId", value: 101, displayed: false)
                 responseMap = [ name: "lock", value: "unlocked", descriptionText: "Successfully unlocked" ]
@@ -467,8 +467,9 @@ private def parseCommandResponse(String description) {
         }
         
         if(responseMap.value == "unlocked"){
-            sendEvent(name: "lastOpenType", value: desc, displayed: false)
-            sendEvent(name: "lastOpenPerson", value: person, displayed: false)
+        	log.debug "lastOpenType: " + desc + ", eventSource: " + eventSource
+            sendEvent(name: "lastOpenType", value: desc, displayed: true)
+            sendEvent(name: "lastOpenPerson", value: person, displayed: true)
         }
         
         sendEvent(name: "lockType", value: desc, displayed: false)
