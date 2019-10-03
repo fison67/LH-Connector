@@ -15,10 +15,8 @@
  */
  
  
-import groovy.json.JsonSlurper
-import groovy.json.JsonOutput
 import groovy.transform.Field
-import physicalgraph.zigbee.zcl.DataType
+import hubitat.zigbee.zcl.DataType
 
 
 metadata {
@@ -39,26 +37,6 @@ metadata {
 		fingerprint profileId: "0104", inClusters: "0000, 0001, 0003, 0004, 0005, 0009, 0101", outClusters: "0019", manufacturer: "SAMSUNG SDS"
         
         command "setCustomCodeData"
-	}
-    
-    tiles(scale: 2) {
-		multiAttributeTile(name:"toggle", type:"generic",  decoration:"flat", width:6, height:4) {
-			tileAttribute ("device.lock", key:"PRIMARY_CONTROL") {
-				attributeState "locked", label:'locked', action:"lock.unlock", icon:"st.locks.lock.locked", backgroundColor:"#00A0DC", nextState:"unlocking"
-				attributeState "unlocked", label:'unlocked', action:"lock.lock", icon:"st.locks.lock.unlocked", backgroundColor:"#ffffff"
-				attributeState "unknown", label:"unknown", icon:"st.locks.lock.unknown", backgroundColor:"#ffffff"
-				attributeState "unlocking", label:'unlocking', action:"lock.lock", icon:"st.locks.lock.unlocked", backgroundColor:"#ffffff"
-				attributeState "autolockError", label:'autolock error', icon:"st.locks.lock.unlocked", backgroundColor:"#ff0000"
-			}
-			tileAttribute("device.displayName", key: "SECONDARY_CONTROL") {
-				attributeState "displayName", label: 'Model:  ${currentValue}'
-			}
-		}
-		valueTile("battery", "device.battery", inactiveLabel:false, decoration:"flat", width:6, height:2) {
-			state "battery", label:'${currentValue}% BATTERY', unit:""
-		}
-		main "toggle"
-		details(["toggle", "battery"])
 	}
     
 	preferences {
@@ -182,10 +160,9 @@ def getUnlockType(type){
     }
 }
 
-def setCustomCodeData(_data){
-	def list = new JsonSlurper().parseText(new String(_data.decodeBase64()))
+def setCustomCodeData(list){
     list.each{ data ->
-       state[data.code.toString()] = data.name
+       state[data.code] = data.name
     }
 }
 
@@ -202,9 +179,14 @@ def ping() {
  */
 def refresh() {
 	log.trace "ZigBee DTH - Executing refresh() for device ${device.displayName}"
-	def cmds = zigbee.readAttribute(CLUSTER_DOORLOCK, DOORLOCK_ATTR_DOORSTATE)
+    /*
+//    def cmds = zigbee.readAttribute(CLUSTER_DOORLOCK, DOORLOCK_ATTR_DOORSTATE, [mfgCode: "0x0003"])
+    def cmds = [
+        "raw 0x0101 { 04 03 00 00 00 10 04 31 32 33 35 }", "delay 200", "send 0x${device.deviceNetworkId} 0x01 0x01"
+	]
 	log.info "ZigBee DTH - refresh() returning with cmds:- $cmds"
 	return cmds
+    */
 }
 
 
@@ -239,12 +221,40 @@ def unlock() {
     def cmds = [
         "raw 0x0101 { 05 03 00 FF 1F 10 04 31 32 33 35 }", "delay 200", "send 0x${device.deviceNetworkId} 0x01 0x01"//, "delay 2000"
 	]
-    log.info "ZigBee DTH - unlock() returning with cmd:- $cmds"
+//    log.info "ZigBee DTH - unlock() returning with cmd:- $cmds"
     return cmds
 }
 
 def lock(){
-	log.warn "Not yet support to lock"
+    // 1C
+/*
+	log.trace "ZigBee DTH - Executing lock() for device ${device.displayName}"
+//    def cmds = [
+//        "raw 0x0101 { 05 03 00 FF 1C 10 04 31 32 33 35 }", "delay 200", "send 0x${device.deviceNetworkId} 0x01 0x01"//, "delay 2000"
+//	]
+    def cmds = zigbee.command(0x0101, 0x1C, ["mfgCode": 3], 200)
+	log.info "ZigBee DTH - lock() returning with cmds:- $cmds"
+	return cmds
+*/
+}
+
+/**
+ * API endpoint for server smart app to scan the lock and populate the attributes. Called only when the attributes are not populated.
+ *
+ * @return cmds: The command(s) fired for reading attributes
+ */
+def reloadAllCodes() {
+	log.trace "ZigBee DTH - Executing reloadAllCodes() for device ${device.displayName}"
+	sendEvent(name: "scanCodes", value: "Scanning", descriptionText: "Code scan in progress", displayed: false)
+	def lockCodes = loadLockCodes()
+	sendEvent(lockCodesEvent(lockCodes))
+	def cmds = validateAttributes()
+    state.checkCode = state.checkCode ?: 0
+
+	cmds += requestCode(state.checkCode)
+
+	log.info "ZigBee DTH - reloadAllCodes() returning with cmds:- $cmds"
+	return cmds
 }
 
 /**
@@ -283,7 +293,7 @@ private def parseAttributeResponse(String description) {
 	def clusterInt = descMap.clusterInt
 	def attrInt = descMap.attrInt 
 	def deviceName = device.displayName
-    
+    log.debug "${clusterInt}:${CLUSTER_POWER}, ${attrInt}:${POWER_ATTR_BATTERY_VOLTAGE}"
 	if (clusterInt == CLUSTER_POWER && attrInt == POWER_ATTR_BATTERY_VOLTAGE) {
 		responseMap.name = "battery"
 		responseMap.value = getBatteryResult(Integer.parseInt(descMap.value, 10))
@@ -353,7 +363,7 @@ private def getBatteryResult(rawValue) {
 private def parseCommandResponse(String description) {
 	Map descMap = zigbee.parseDescriptionAsMap(description)
 	def deviceName = device.displayName
-    log.trace "ZigBee DTH - Executing parseCommandResponse() for device ${deviceName} >> ${descMap}"
+//    log.trace "ZigBee DTH - Executing parseCommandResponse() for device ${deviceName} >> ${descMap}"
 
 	def result = []
 	Map responseMap = [:]
@@ -371,7 +381,7 @@ private def parseCommandResponse(String description) {
                 responseMap.name = "lock"
                 responseMap.displayed = true
                 responseMap.isStateChange = true
-                sendEvent(name: "lastOpenType", value: "App", displayed: true)
+                sendEvent(name: "lastOpenType", value: "App", displayed: false)
                 sendEvent(name: "lockCode", value: 0, displayed: false)
                 sendEvent(name: "lockTypeId", value: 101, displayed: false)
                 responseMap = [ name: "lock", value: "unlocked", descriptionText: "Successfully unlocked" ]
@@ -388,12 +398,14 @@ private def parseCommandResponse(String description) {
 		int length = Integer.parseInt(data[0], 16)
 		int i = 2;
 		String model = "" + (char) Integer.parseInt(data[1], 16)
-		char tempChar
+
+		String tempChar
 		while ((Integer.parseInt(data[i], 16) != 32) && i < (length-1)){ 
 			tempChar = (char) Integer.parseInt(data[i], 16)
 			model = model + tempChar
 			i++
 		}
+
 		responseMap = [ name: "displayName", value: model, displayed: false]
 	} else if (clusterInt == CLUSTER_DOORLOCK && cmd == DOORLOCK_RESPONSE_OPERATION_EVENT) {
 		log.trace "ZigBee DTH - Executing DOORLOCK_RESPONSE_OPERATION_EVENT for device ${deviceName} with description map:- $descMap"
@@ -470,9 +482,8 @@ private def parseCommandResponse(String description) {
         }
         
         if(responseMap.value == "unlocked"){
-        	log.debug "lastOpenType: " + desc + ", eventSource: " + eventSource
-            sendEvent(name: "lastOpenType", value: desc, displayed: true)
-            sendEvent(name: "lastOpenPerson", value: person, displayed: true)
+            sendEvent(name: "lastOpenType", value: desc, displayed: false)
+            sendEvent(name: "lastOpenPerson", value: person, displayed: false)
         }
         
         sendEvent(name: "lockType", value: desc, displayed: false)
@@ -531,6 +542,150 @@ private def parseCommandResponse(String description) {
 	} else {
 		result = null
 	}
-	log.debug "ZigBee DTH - parseCommandResponse() returning with result:- $result"
+//	log.debug "ZigBee DTH - parseCommandResponse() returning with result:- $result"
 	return result
+}
+
+/**
+ * API endpoint for setting a user code on a Zigbee lock
+ *
+ * @param codeID: The code slot number
+ *
+ * @param code: The code PIN
+ *
+ * @param codeName: The name of the code
+ *
+ * @returns cmds: The commands fired for creation and checking of a lock code
+ */
+def setCode(codeID, code, codeName = null) {
+	if (!code) {
+		log.trace "ZigBee DTH - Executing nameSlot() for device ${device.displayName}"
+		nameSlot(codeID, codeName)
+		return
+	}
+
+	log.trace "ZigBee DTH - Executing setCode() for device ${device.displayName}"
+	if (isValidCodeID(codeID) && isValidCode(code)) {
+		log.debug "Zigbee DTH - setting code in slot number $codeID"
+		def cmds = []
+		def attrCmds = validateAttributes()
+		def setPayload = getPayloadToSetCode(codeID, code)
+        
+		cmds << zigbee.command(CLUSTER_DOORLOCK, DOORLOCK_CMD_USER_CODE_SET, setPayload).first()
+		
+
+		def strname = (codeName ?: "Code $codeID")
+		state["setname$codeID"] = strname
+		if(attrCmds) {
+			cmds = attrCmds + cmds
+		}
+		return cmds
+	} else {
+		log.warn "Zigbee DTH - Invalid input: Unable to set code in slot number $codeID"
+		return null
+	}
+}
+
+
+/**
+ * Checks if the slot number is within the allowed limits
+ *
+ * @param codeID The code slot number
+ *
+ * @param allowMasterCode Flag to indicate if master code slot should be allowed as a valid slot
+ *
+ * @return true if valid, false if not
+ */
+private boolean isValidCodeID(codeID, allowMasterCode = false) {
+	def defaultMaxCodes = 30
+	def minCodeId = 0
+	if (allowMasterCode) {
+		minCodeId = 0
+	}
+	def maxCodes = device.currentValue("maxCodes") ?: defaultMaxCodes
+	if (codeID.toInteger() >= minCodeId && codeID.toInteger() <= maxCodes) {
+		return true
+	}
+	return false
+}
+
+/**
+ * Checks if the code PIN is valid
+ *
+ * @param code The code PIN
+ *
+ * @return true if valid, false if not
+ */
+private boolean isValidCode(code) {
+	def minCodeLength = device.currentValue("minCodeLength") ?: 4
+	def maxCodeLength = device.currentValue("maxCodeLength") ?: 8
+	if (code.toString().size() <= maxCodeLength && code.toString().size() >= minCodeLength && code.isNumber()) {
+		return true
+	}
+	return false
+}
+
+/**
+ * Reads the code name from the 'lockCodes' map
+ *
+ * @param lockCodes: map with lock code names
+ *
+ * @param codeID: The code slot number
+ *
+ * @returns The code name
+ */
+private String getCodeName(lockCodes, codeID) {
+	if (isMasterCode(codeID)) {
+		return "Master Code"
+	}
+	lockCodes[codeID.toString()] ?: "Code $codeID"
+}
+
+/**
+ * Utility function to figure out if code id pertains to master code or not
+ *
+ * @param codeID - The slot number in which code is set
+ * @return - true if slot is for master code, false otherwise
+ */
+private boolean isMasterCode(codeID) {
+	if(codeID instanceof String) {
+		codeID = codeID.toInteger()
+	}
+	(codeID == 0) ? true : false
+}
+
+/**
+ * Populates the 'lockCodes' attribute by calling send event
+ *
+ * @param lockCodes The codes in a lock
+ */
+private Map lockCodesEvent(lockCodes) {
+	createEvent(name: "lockCodes", value: util.toJson(lockCodes), displayed: false, descriptionText: "'lockCodes' attribute updated")
+}
+
+/**
+ * Reads the 'lockCodes' attribute and parses the same
+ *
+ * @returns Map: The lockCodes map
+ */
+private Map loadLockCodes() {
+	parseJson(device.currentValue("lockCodes") ?: "{}") ?: [:]
+}
+
+/**
+ * Converts the code octet to code PIN
+ *
+ * @param data The data map returned in case of user code get
+ *
+ * @return code: The code string
+ */
+private def getCodeFromOctet(data) {
+	def code = ""
+	def codeLength = Integer.parseInt(data[4], 16)
+	if (codeLength >= device.currentValue("minCodeLength") && codeLength <= device.currentValue("maxCodeLength")) {
+		for (def i = 5; i < (5 + codeLength); i++) {
+			code += (char) (zigbee.convertHexToInt(data[i]))
+		}
+	}
+	return code
 }
