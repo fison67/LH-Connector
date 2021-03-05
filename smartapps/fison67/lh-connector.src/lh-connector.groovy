@@ -1,5 +1,5 @@
 /**
- *  Lock History Connector (v.0.0.1)
+ *  Lock History Connector (v.0.0.2)
  *
  * MIT License
  *
@@ -49,10 +49,16 @@ preferences {
 
 
 def mainPage() {
-	def languageList = ["English", "Korean"]
+	if(location.hubs.size() < 1) {
+        section() {
+            paragraph "[ERROR]\nSmartThings Hub not found.\nYou need a SmartThings Hub to use LH connector."
+        }
+        return
+    }
+    
     dynamicPage(name: "mainPage", title: "LH Connector", nextPage: null, uninstall: true, install: true) {
    		section("Setup"){
-        	input "address", "string", title: "Server address", required: true
+        	input "address", "text", title: "Server address", required: true
             href "devicePage", title: "Lock Device", description:"Select a device."
         	href url:"http://${settings.address}", style:"embedded", required:false, title:"Local Management", description:"This makes you easy to setup"
         }
@@ -112,13 +118,18 @@ def initialize() {
 def syncDevice(){
 	log.debug "Sync Device"
     def json = request.JSON
-    
+    log.debug json
     unsubscribe()
     
     (settings.lock).each { device ->
        json.data.each { item -> 
            if(device.deviceNetworkId == item.dni){
-               device.setCustomCodeData(item.list.toString().bytes.encodeBase64().toString())   
+                def str = item.list.toString().bytes.encodeAsBase64().toString()
+                try{
+               		device.setCustomCodeData(str)   
+                }catch(err){
+                	log.error err
+                }
                subscribe(device, 'lock', stateChangeHandler)
            }
        }
@@ -130,8 +141,8 @@ def getStatus(){
     (settings.lock).each { device ->
         if(device.deviceNetworkId == params.dni){
             result["lock"] = device.currentValue("lock")
-            result["lockCode"] = device.currentValue("lockCode")
-            result["eventSource"] = device.currentValue("eventSource")
+            result["lockCode"] = device.currentValue("codeid") as int
+//            result["eventSource"] = device.currentValue("eventSource")
         }
     }
     
@@ -140,27 +151,43 @@ def getStatus(){
 }
 
 def stateChangeHandler(evt) {
-	def device = evt.getDevice()
-    if(device){
-		def options = [
+    def device = evt.getDevice()
+    if(!device){
+    	return
+    }
+    
+    if(state.lastState != device.deviceNetworkId + ":" + evt.value){
+        
+        def options = [
             "method": "POST",
             "path": ("/notify"),
             "headers": [
                 "Content-Type": "application/json",
-        	    "HOST": settings.address,
+                "HOST": settings.address,
             ],
             "body":[
                 "dni": device.deviceNetworkId,
                 "lock": evt.value,
-                "lockCode": device.currentValue("lockCode"),
+                "lockCode": device.currentValue("codeid") as int,
                 "lockTypeId": device.currentValue("lockTypeId")
             ]
         ]
-        
-        def myhubAction = new physicalgraph.device.HubAction(options, null, [callback: notifyCallback])
-    	sendHubCommand(myhubAction)
+        def myhubAction = new physicalgraph.device.HubAction(options, null, [callback: null])
+        sendHubCommand(myhubAction)
+    }
+	state.lastState = device.deviceNetworkId + ":" + evt.value
+}
+
+def serverCallback(physicalgraph.device.HubResponse hubResponse) {
+    def msg, json, status
+    try {
+        msg = parseLanMessage(hubResponse.description)
+ //       log.debug "${msg.body}"
+    } catch (e) {
+        logger('warn', "Exception caught while parsing data: "+e);
     }
 }
+
 
 def deviceList(){
 	def list = getChildDevices();
