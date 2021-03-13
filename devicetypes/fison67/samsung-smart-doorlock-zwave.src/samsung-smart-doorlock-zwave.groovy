@@ -22,7 +22,7 @@ import physicalgraph.zwave.commands.doorlockv1.*
 import physicalgraph.zwave.commands.usercodev1.*
 
 metadata {
-	definition (name: "Samsung Smart DoorLock Zwave", namespace: "streamorange58819", author: "fison67", genericHandler: "Z-Wave", mnmn: "fison67",  vid:"0e71013a-70b3-31c2-b210-db9e40ce2b3c") {
+	definition (name: "Samsung Smart DoorLock Zwave", namespace: "streamorange58819", author: "fiosn67", mnmn: "fison67",  vid:"0e71013a-70b3-31c2-b210-db9e40ce2b3c") {
 		capability "Lock"
 		capability "Actuator"
         capability "streamorange58819.unlocktype"
